@@ -1,3 +1,15 @@
+// fyi - for your information
+// Copyright (C) 2026 S.G.Johansson <s.johansson.it@gmail.com>
+// https://voidflow.tech/
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// A copy is included in the LICENSE file, or see
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+//! fyi: tell me about these files. Entry point, argument handling, WSL
+//! target resolution and history commands.
+
 mod history;
 mod model;
 mod render;
@@ -24,7 +36,21 @@ enum ColorMode {
 
 /// Tell me about these files: a colorful, WSL2-aware ls/tree replacement.
 #[derive(Parser)]
-#[command(name = "fyi", version, about, max_term_width = 100)]
+#[command(
+    name = "fyi",
+    version,
+    author = "S.G.Johansson <s.johansson.it@gmail.com>  https://voidflow.tech/",
+    about,
+    max_term_width = 100,
+    help_template = "\
+{name} {version}: {about}
+by {author}
+
+{usage-heading} {usage}
+
+{all-args}{after-help}",
+    after_help = "Source and issues: https://github.com/SGJohansson/FYI  (Apache-2.0)"
+)]
 struct Cli {
     /// Paths to list. Windows paths (C:\..., C:/..., \\wsl.localhost\...) work on WSL,
     /// even unquoted.

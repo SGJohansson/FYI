@@ -1,3 +1,12 @@
+// fyi - for your information
+// Copyright (C) 2026 S.G.Johansson <s.johansson.it@gmail.com>
+// https://voidflow.tech/
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// A copy is included in the LICENSE file, or see
+// http://www.apache.org/licenses/LICENSE-2.0
+//
 //! ANSI truecolor styling and the fixed fyi palette.
 
 use crate::model::Access;

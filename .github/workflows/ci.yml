@@ -18,6 +18,7 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+      - run: sh -n install.sh
 
   msrv:
     runs-on: ubuntu-latest
@@ -29,17 +30,28 @@ jobs:
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test, msrv]
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - run: rustup target add x86_64-unknown-linux-musl
-      - run: cargo build --release --target x86_64-unknown-linux-musl
-      - run: |
-          cp target/x86_64-unknown-linux-musl/release/fyi fyi-x86_64-linux-musl
-          sha256sum fyi-x86_64-linux-musl > fyi-x86_64-linux-musl.sha256
+      - run: rustup target add ${{ matrix.arch }}-unknown-linux-musl
+      - run: cargo build --release --locked --target ${{ matrix.arch }}-unknown-linux-musl
+      - name: package
+        run: |
+          out=fyi-${{ matrix.arch }}-linux-musl
+          cp target/${{ matrix.arch }}-unknown-linux-musl/release/fyi "$out"
+          ./"$out" --version
+          sha256sum "$out" > "$out.sha256"
       - uses: softprops/action-gh-release@v2
         with:
+          fail_on_unmatched_files: true
           files: |
-            fyi-x86_64-linux-musl
-            fyi-x86_64-linux-musl.sha256
+            fyi-${{ matrix.arch }}-linux-musl
+            fyi-${{ matrix.arch }}-linux-musl.sha256

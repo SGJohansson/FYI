@@ -1,6 +1,8 @@
 # fyi
 
-**fyi** — *for your information* — tells you about your files.
+**fyi** (*for your information*) tells you about your files.
+
+by **S.G.Johansson** · <s.johansson.it@gmail.com> · <https://voidflow.tech/>
 
 A colorful, WSL2-aware `ls` and `tree` replacement for Linux. Every listing shows
 file sizes color-graded from cool to hot and names colored by what **you** are
@@ -10,13 +12,44 @@ replayed from history.
 
 One static Rust binary, no runtime dependencies.
 
+## Why
+
+Nine times out of ten I just want to look around my directories: what is in here,
+how big is it, and can I touch it. Plain `ls` makes me work for that. Sizes need
+`-s` *and* `-h` before a human can read them, colors need `--color`, sorting needs
+`--sort=…`, and permissions come as `-rwxr-x---` to decode in your head. On WSL,
+every Windows path goes through `wslpath` first.
+
+fyi is the listing I wanted to just type and read, with no flags for the everyday
+case:
+
+- **Sizes are always there**, readable at a glance by color, from cool blue for
+  small files to hot orange for huge ones.
+- **Permissions are a color on the name**, judged for *you*, not a mode string.
+- **The layout fits your terminal**. Long names are shortened, never wrapped.
+- **Windows paths just work** on WSL, even pasted unquoted.
+- **What you just looked at is kept**, so you can get it back with `fyi -b`.
+
+Flags exist for the uncommon cases, not the common one.
+
 ## Install
 
+Prebuilt static binary (x86_64 and aarch64), checksum-verified, into `~/.local/bin`:
+
 ```sh
-cargo install --git https://github.com/SGJohansson/fyi
+curl -fsSL https://raw.githubusercontent.com/SGJohansson/FYI/main/install.sh | sh
 ```
 
-Fully static build (recommended for copying between machines):
+Or grab `fyi-<arch>-linux-musl` from the
+[latest release](https://github.com/SGJohansson/FYI/releases/latest) yourself.
+
+From source:
+
+```sh
+cargo install --git https://github.com/SGJohansson/FYI
+```
+
+Fully static build from source:
 
 ```sh
 rustup target add x86_64-unknown-linux-musl
@@ -138,6 +171,14 @@ output, so a replay is laid out for your current terminal.
 - Listing the same place twice in a row replaces the previous entry.
 - Only interactive listings are recorded. Piped output never is.
 
+## Author
+
+**S.G.Johansson**: <s.johansson.it@gmail.com> · <https://voidflow.tech/>
+
+Bug reports and ideas are welcome as
+[issues](https://github.com/SGJohansson/FYI/issues).
+
 ## License
 
-Licensed under the [Apache License, Version 2.0](LICENSE).
+Copyright © 2026 S.G.Johansson. Licensed under the
+[Apache License, Version 2.0](LICENSE).
