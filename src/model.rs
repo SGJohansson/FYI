@@ -258,9 +258,8 @@ fn expand(node: &mut Node, path: &Path, opts: &ScanOpts, depth_left: usize) {
         .collect();
     sort_nodes(&mut kids, opts.order);
 
-    if let Some(limit) = opts.limit
-        && kids.len() > limit
-    {
+    let over_limit = opts.limit.filter(|&l| kids.len() > l);
+    if let Some(limit) = over_limit {
         for k in kids.drain(limit..) {
             if k.is_dir {
                 node.omitted_dirs += 1;
@@ -322,10 +321,8 @@ pub fn dir_size(path: &Path) -> u64 {
             let Ok(ft) = e.file_type() else { continue };
             if ft.is_dir() {
                 stack.push(e.path());
-            } else if !ft.is_symlink()
-                && let Ok(m) = e.metadata()
-            {
-                total += m.len();
+            } else if !ft.is_symlink() {
+                total += e.metadata().map(|m| m.len()).unwrap_or(0);
             }
         }
     }

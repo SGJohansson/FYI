@@ -2,6 +2,7 @@
 name = "fyi"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 description = "A colorful, WSL2-aware ls and tree replacement for Linux."
 license = "Apache-2.0"
 repository = "https://github.com/SGJohansson/fyi"

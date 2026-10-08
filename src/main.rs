@@ -171,17 +171,14 @@ fn display_path(arg: &str) -> String {
         }
     }
     let s = norm.display().to_string();
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from)
-        && home.as_os_str().len() > 1
-        && let Ok(rest) = norm.strip_prefix(&home)
-    {
-        return if rest.as_os_str().is_empty() {
-            "~".into()
-        } else {
-            format!("~/{}", rest.display())
-        };
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|h| h.as_os_str().len() > 1);
+    match home.as_deref().and_then(|h| norm.strip_prefix(h).ok()) {
+        Some(rest) if rest.as_os_str().is_empty() => "~".into(),
+        Some(rest) => format!("~/{}", rest.display()),
+        None => s,
     }
-    s
 }
 
 fn emit(s: &str) -> bool {

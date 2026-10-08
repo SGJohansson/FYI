@@ -152,12 +152,13 @@ pub fn record(
     let existing = files();
 
     // Re-listing the same place replaces its previous entry instead of stacking.
-    if let Some(newest) = existing.first()
-        && newest
+    let same_as_newest = existing.first().filter(|newest| {
+        newest
             .file_stem()
             .and_then(|s| s.to_str())
             .is_some_and(|s| s.ends_with(&k))
-    {
+    });
+    if let Some(newest) = same_as_newest {
         let _ = fs::remove_file(newest);
     }
 

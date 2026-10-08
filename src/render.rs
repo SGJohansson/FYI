@@ -68,9 +68,8 @@ fn name_cell(n: &Node, p: Painter, max: Option<usize>, show_target: bool) -> Cel
             + width(arrow_shown)
             + target.as_deref().map(width).unwrap_or(0)
     };
-    if let Some(m) = max
-        && total(&name, &target) > m
-    {
+    let overflow = max.filter(|&m| total(&name, &target) > m);
+    if let Some(m) = overflow {
         if let Some(t) = &target {
             let tb = (m / 2).max(8);
             target = Some(truncate_middle(t, tb));
@@ -158,10 +157,10 @@ fn header_line(root: &Node, h: &Header, p: Painter, out: &mut String) {
         line.push_str("   ");
         line.push_str(&s);
     }
-    if root.error.is_none()
-        && root.children.is_some()
-        && let Some(t) = total_size(root)
-    {
+    let total = (root.error.is_none() && root.children.is_some())
+        .then(|| total_size(root))
+        .flatten();
+    if let Some(t) = total {
         line.push_str(&p.paint(" · ", Sty::dim()));
         line.push_str(&p.paint(&human_size(t), size_sty(t)));
     }
