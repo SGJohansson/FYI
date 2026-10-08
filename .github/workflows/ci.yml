@@ -1,10 +1,13 @@
 name: ci
 
+# Every push to main is tested. If the version in Cargo.toml has no release yet,
+# static binaries are built and published as release v<version> automatically.
+
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -27,9 +30,29 @@ jobs:
       - run: rustup toolchain install 1.85 --profile minimal
       - run: cargo +1.85 build --locked
 
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, msrv]
+  version:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      new: ${{ steps.v.outputs.new }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          echo "tag=v$ver" >> "$GITHUB_OUTPUT"
+          if gh release view "v$ver" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: [test, msrv, version]
+    if: needs.version.outputs.new == 'true'
     strategy:
       matrix:
         include:
@@ -49,9 +72,25 @@ jobs:
           cp target/${{ matrix.arch }}-unknown-linux-musl/release/fyi "$out"
           ./"$out" --version
           sha256sum "$out" > "$out.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fyi-${{ matrix.arch }}
+          path: fyi-${{ matrix.arch }}-linux-musl*
+
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: fyi ${{ needs.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
-            fyi-${{ matrix.arch }}-linux-musl
-            fyi-${{ matrix.arch }}-linux-musl.sha256
+            fyi-*-linux-musl
+            fyi-*-linux-musl.sha256
