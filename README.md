@@ -288,7 +288,7 @@ functions:
 
 ```sh
 # ~/.bashrc  (or ~/.zshrc with zsh)
-eval "$(lsi --init bash)"
+command -v lsi >/dev/null && eval "$(lsi --init bash)"
 ```
 
 ```sh

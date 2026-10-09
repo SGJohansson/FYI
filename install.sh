@@ -271,5 +271,5 @@ for p in $old; do
     log "NOTE other copy $p"
 done
 
-say "optional, for wcd/wcp: echo 'eval \"\$($CMD --init bash)\"' >> ~/.bashrc"
+say "optional, for wcd/wcp, add to ~/.bashrc: command -v $CMD >/dev/null && eval \"\$($CMD --init bash)\""
 log "DONE"
