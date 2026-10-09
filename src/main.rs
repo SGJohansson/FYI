@@ -13,6 +13,20 @@
 #[cfg(not(unix))]
 compile_error!("fyi is Linux/WSL only: build it inside WSL (cargo build in a Linux shell).");
 
+/// Name this binary was invoked as (`lsi`), for usage and messages.
+static PROG: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+pub fn prog() -> &'static str {
+    PROG.get().map(String::as_str).unwrap_or("lsi")
+}
+
+/// `eprintln!` prefixed with the program name.
+macro_rules! err {
+    ($($t:tt)*) => {
+        eprintln!("{}: {}", $crate::prog(), format_args!($($t)*))
+    };
+}
+
 mod convert;
 mod filter;
 mod history;
@@ -22,7 +36,7 @@ mod style;
 mod text;
 mod wsl;
 
-use clap::{Parser, ValueEnum};
+use clap::{CommandFactory, FromArgMatches, Parser, ValueEnum};
 use convert::{Shell, To};
 use filter::Filter;
 use history::Mode;
@@ -56,8 +70,8 @@ by {author}
 {usage-heading} {usage}
 
 {all-args}{after-help}",
-    after_help = "Filter keywords, size bands and color legend: fyi --legend\n\
-cd to an Explorer path, unquoted or from the clipboard: eval \"$(fyi --init bash)\", then wcd\n\
+    after_help = "Filter keywords, size bands and color legend: lsi --legend\n\
+cd to an Explorer path, unquoted or from the clipboard: eval \"$(lsi --init bash)\", then wcd\n\
 Source and issues: https://github.com/SGJohansson/FYI  (Apache-2.0)"
 )]
 struct Cli {
@@ -277,24 +291,25 @@ fn run_convert(cli: &Cli) -> ExitCode {
         || !cli.ext.is_empty()
         || !cli.eext.is_empty();
     if listing {
-        eprintln!(
-            "fyi: -p / --paste cannot be combined with listing options; \
+        err!(
+            "-p / --paste cannot be combined with listing options; \
              put options before -p, everything after it is the path"
         );
         return ExitCode::from(2);
     }
     if cli.paste && cli.wslpath.is_some() {
-        eprintln!("fyi: use either -p or --paste");
+        err!("use either -p or --paste");
         return ExitCode::from(2);
     }
     let Some(w) = Wsl::detect() else {
-        eprintln!("fyi: path conversion needs WSL");
+        err!("path conversion needs WSL");
         return ExitCode::from(2);
     };
     let args = cli.wslpath.clone().unwrap_or_default();
     if let Some(a) = args.first().filter(|a| a.len() > 1 && a.starts_with('-')) {
-        eprintln!(
-            "fyi: {a}: everything after -p is the path; options go first: fyi [OPTIONS] -p PATH"
+        err!(
+            "{a}: everything after -p is the path; options go first: {} [OPTIONS] -p PATH",
+            prog()
         );
         return ExitCode::from(2);
     }
@@ -311,7 +326,7 @@ fn run_convert(cli: &Cli) -> ExitCode {
     let text = match text {
         Ok(t) => t,
         Err(m) => {
-            eprintln!("fyi: {m}");
+            err!("{m}");
             return ExitCode::FAILURE;
         }
     };
@@ -328,7 +343,7 @@ fn run_convert(cli: &Cli) -> ExitCode {
         match convert::convert(&w, i, cli.to) {
             Ok(s) => ok.push(s),
             Err(m) => {
-                eprintln!("fyi: {m}");
+                err!("{m}");
                 failed = true;
             }
         }
@@ -345,7 +360,7 @@ fn run_convert(cli: &Cli) -> ExitCode {
     emit(&out);
     if cli.copy && !ok.is_empty() {
         if let Err(m) = convert::copy(&w, &ok.join("\r\n")) {
-            eprintln!("fyi: {m}");
+            err!("{m}");
             failed = true;
         }
     }
@@ -365,7 +380,17 @@ fn main() -> ExitCode {
             None => vec![a],
         }
     });
-    let cli = Cli::parse_from(argv);
+    let argv: Vec<std::ffi::OsString> = argv.collect();
+    let name = argv
+        .first()
+        .and_then(|a| Path::new(a).file_name())
+        .and_then(|n| n.to_str())
+        .filter(|n| !n.is_empty())
+        .unwrap_or("lsi")
+        .to_string();
+    let _ = PROG.set(name);
+    let cli = Cli::command().bin_name(prog()).get_matches_from(argv);
+    let cli = Cli::from_arg_matches(&cli).unwrap_or_else(|e| e.exit());
     let tty = std::io::stdout().is_terminal();
     let color = match cli.color {
         ColorMode::Always => true,
@@ -388,7 +413,7 @@ fn main() -> ExitCode {
     let mut out = String::new();
 
     if let Some(sh) = cli.init {
-        emit(convert::init(sh));
+        emit(&convert::init(sh, prog()));
         return ExitCode::SUCCESS;
     }
     let path_mode = cli.wslpath.is_some() || cli.paste;
@@ -396,7 +421,7 @@ fn main() -> ExitCode {
         return run_convert(&cli);
     }
     if cli.copy || cli.quote || cli.to != To::Auto {
-        eprintln!("fyi: --copy, --quote and --to only apply to -p / --paste");
+        err!("--copy, --quote and --to only apply to -p / --paste");
         return ExitCode::from(2);
     }
 
@@ -407,7 +432,7 @@ fn main() -> ExitCode {
     let flt = match Filter::parse(&cli.ext, &cli.eext) {
         Ok(f) => f,
         Err(m) => {
-            eprintln!("fyi: {m}");
+            err!("{m}");
             return ExitCode::from(2);
         }
     };
@@ -415,7 +440,7 @@ fn main() -> ExitCode {
     if cli.hist {
         let list = history::list();
         if list.is_empty() {
-            eprintln!("fyi: history is empty");
+            err!("history is empty");
             return ExitCode::SUCCESS;
         }
         for (i, h) in list.iter().enumerate() {
@@ -481,7 +506,7 @@ fn main() -> ExitCode {
                 ExitCode::SUCCESS
             }
             Err(m) => {
-                eprintln!("fyi: {m}");
+                err!("{m}");
                 ExitCode::FAILURE
             }
         };
@@ -550,7 +575,7 @@ fn main() -> ExitCode {
     }
     emit(&out);
     for e in &errs {
-        eprintln!("fyi: {e}");
+        err!("{e}");
     }
     if failed {
         ExitCode::FAILURE

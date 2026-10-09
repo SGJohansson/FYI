@@ -255,7 +255,7 @@ pub fn legend(p: Painter) -> String {
     l.extend(
         SUGGEST
             .iter()
-            .map(|&(a, w)| format!("  fyi {a:<40}{}", d(w))),
+            .map(|&(a, w)| format!("  {} {a:<40}{}", crate::prog(), d(w))),
     );
     l.extend([
         String::new(),

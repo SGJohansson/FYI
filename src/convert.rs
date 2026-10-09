@@ -243,11 +243,11 @@ pub fn copy(w: &Wsl, text: &str) -> Result<(), String> {
 
 /// Shell functions printed by `fyi --init`. A child process cannot change the
 /// shell's directory, so `wcd` has to be a function.
-pub fn init(sh: Shell) -> &'static str {
+pub fn init(sh: Shell, prog: &str) -> String {
     match sh {
         // The same POSIX-style function works in bash and zsh.
         Shell::Bash | Shell::Zsh => {
-            r#"# fyi shell integration: eval "$(fyi --init bash)"  (or zsh)
+            r#"# fyi shell integration: eval "$(@PROG@ --init bash)"  (or zsh)
 # wcd [PATH...]  cd to a Windows or Linux path, typed unquoted or pasted;
 #                no argument: the Windows clipboard. A file goes to its folder.
 # wcp [PATH...]  copy PATH (default: here) to the Windows clipboard as D:\...
@@ -270,9 +270,9 @@ wcd() {
     __fyi_usage wcd "$1"; case $? in 0) return 0 ;; 2) return 2 ;; esac
     local __fyi_p
     if [ "$#" -eq 0 ]; then
-        __fyi_p=$(command fyi --paste --to linux) || return
+        __fyi_p=$(command @PROG@ --paste --to linux) || return
     else
-        __fyi_p=$(command fyi --to linux -p "$@") || return
+        __fyi_p=$(command @PROG@ --to linux -p "$@") || return
     fi
     __fyi_p=${__fyi_p%%
 *}
@@ -281,11 +281,12 @@ wcd() {
 }
 wcp() {
     __fyi_usage wcp "$1"; case $? in 0) return 0 ;; 2) return 2 ;; esac
-    command fyi --copy --to win -p "$@"
+    command @PROG@ --copy --to win -p "$@"
 }
 "#
         }
     }
+    .replace("@PROG@", prog)
 }
 
 #[cfg(test)]

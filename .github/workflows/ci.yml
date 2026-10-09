@@ -69,7 +69,7 @@ jobs:
       - name: package
         run: |
           out=fyi-${{ matrix.arch }}-linux-musl
-          cp target/${{ matrix.arch }}-unknown-linux-musl/release/fyi "$out"
+          cp target/${{ matrix.arch }}-unknown-linux-musl/release/lsi "$out"
           ./"$out" --version
           sha256sum "$out" > "$out.sha256"
       - uses: actions/upload-artifact@v4

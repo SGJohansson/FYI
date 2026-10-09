@@ -1,6 +1,7 @@
 # fyi
 
-**fyi** (*for your information*) tells you about your files.
+**fyi** (*for your information*) tells you about your files. Its command is
+**`lsi`**: `ls` plus *info*, and if you forget it, typing `ls` and Tab finds it.
 
 by **S.G.Johansson** · <s.johansson.it@gmail.com> · <https://voidflow.tech/>
 
@@ -20,7 +21,7 @@ how big is it, and can I touch it. Plain `ls` makes me work for that. Sizes need
 `--sort=…`, and permissions come as `-rwxr-x---` to decode in your head. On WSL,
 every Windows path goes through `wslpath` first.
 
-fyi is the listing I wanted to just type and read, with no flags for the everyday
+lsi is the listing I wanted to just type and read, with no flags for the everyday
 case:
 
 - **Sizes are always there**, readable at a glance by color, from cool blue for
@@ -28,20 +29,49 @@ case:
 - **Permissions are a color on the name**, judged for *you*, not a mode string.
 - **The layout fits your terminal**. Long names are shortened, never wrapped.
 - **Windows paths just work** on WSL, even pasted unquoted.
-- **What you just looked at is kept**, so you can get it back with `fyi -b`.
+- **What you just looked at is kept**, so you can get it back with `lsi -b`.
 
 Flags exist for the uncommon cases, not the common one.
 
 ## Install
 
-Prebuilt static binary (x86_64 and aarch64), checksum-verified, into `~/.local/bin`:
+`install.sh` downloads the prebuilt static binary for your machine (x86_64 or
+aarch64), checks it against the published SHA-256 and installs it as `lsi`.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/SGJohansson/FYI/main/install.sh | sh
+wget2 https://raw.githubusercontent.com/SGJohansson/FYI/main/install.sh   # or curl -fsSLO
+chmod +x install.sh
+./install.sh          # for you:       ~/.local/bin/lsi
+sudo ./install.sh     # system-wide:   /usr/local/bin/lsi
 ```
 
-Or grab `fyi-<arch>-linux-musl` from the
-[latest release](https://github.com/SGJohansson/FYI/releases/latest) yourself.
+| Option   | Does                                                                   |
+|----------|------------------------------------------------------------------------|
+| *(none)* | install for this user into `~/.local/bin` (`$XDG_BIN_HOME` if set)     |
+| `-s`     | install system-wide into `/usr/local/bin`; needs root, implied by sudo |
+| `-u`     | uninstall: removes `lsi` only if this script installed it, unchanged   |
+| `-f`     | replace an existing `lsi` (or remove a changed one with `-u`) without asking |
+| `-y`     | answer yes to questions                                                |
+| `-v TAG` | install a given release, e.g. `-v v0.3.0`                              |
+| `-l DIR` | install from a directory holding `fyi-<arch>-linux-musl` and its `.sha256`: no download, for offline or LAN machines |
+
+What it does and does not do:
+
+- **Creates missing directories without asking**: `~/.local/bin`, the log directory.
+- **Never overwrites silently.** An existing, different `lsi` is only replaced
+  after you answer `y` (or with `-f`). Without a terminal it stops instead.
+- **Moves and deletes nothing else.** Older `fyi`/`lsi` copies elsewhere in your
+  PATH are listed, not touched. Your shell profile is not edited.
+- **Logs every action**, one line each, to `~/.local/state/fyi/install.log`
+  (user) or `/var/log/fyi-install.log` (root). `-u` uses this log to recognise
+  what it installed.
+- Falls back to building from source when no prebuilt binary fits and Rust is
+  installed.
+
+`curl -fsSL https://raw.githubusercontent.com/SGJohansson/FYI/main/install.sh | sh`
+works too. Or grab `fyi-<arch>-linux-musl` from the
+[latest release](https://github.com/SGJohansson/FYI/releases/latest) yourself and
+install it as `lsi`.
 
 From source:
 
@@ -54,16 +84,16 @@ Fully static build from source:
 ```sh
 rustup target add x86_64-unknown-linux-musl
 cargo build --release --target x86_64-unknown-linux-musl
-install -m 755 target/x86_64-unknown-linux-musl/release/fyi ~/.local/bin/
+install -m 755 target/x86_64-unknown-linux-musl/release/lsi ~/.local/bin/
 ```
 
-Optional: `alias ls=fyi`. When stdout is not a terminal, fyi prints bare names one
+Optional: `alias ls=lsi`. When stdout is not a terminal, lsi prints bare names one
 per line, so pipes and scripts keep working.
 
 ## Usage
 
 ```
-fyi [OPTIONS] [PATHS]...
+lsi [OPTIONS] [PATHS]...
 
   -a, --all            show hidden entries
   -1, --single         one entry per line
@@ -95,12 +125,12 @@ fyi [OPTIONS] [PATHS]...
 Terms are comma-separated and case-insensitive; `a+b` must match both.
 
 ```sh
-fyi --ext=dir,mp3,mkv          # directories, mp3 and mkv files
-fyi --eext=sh,py,exe           # everything except those
-fyi --ext=dir,bin,hidden       # directories, executables, dotfiles
-fyi --ext=mkv+large            # only big videos
-fyi --eext=small               # hide everything under 1M
-fyi -r --ext=large             # tree of where the gigabytes are
+lsi --ext=dir,mp3,mkv          # directories, mp3 and mkv files
+lsi --eext=sh,py,exe           # everything except those
+lsi --ext=dir,bin,hidden       # directories, executables, dotfiles
+lsi --ext=mkv+large            # only big videos
+lsi --eext=small               # hide everything under 1M
+lsi -r --ext=large             # tree of where the gigabytes are
 ```
 
 | Term                         | Matches                                   |
@@ -124,9 +154,9 @@ files ending in `.bin`.
 - Tree view keeps directories that still hold matches; with `dir` it keeps them all.
 - `-n` counts what survives the filter; the header shows how many were filtered.
 - Size terms see directories only with `-d`.
-- Filters also apply to replays: `fyi -b --ext=mp3`.
+- Filters also apply to replays: `lsi -b --ext=mp3`.
 
-`fyi --legend` prints all of this, with more examples and the color legend, in your
+`lsi --legend` prints all of this, with more examples and the color legend, in your
 terminal.
 
 ## Colors
@@ -195,11 +225,11 @@ On WSL, fyi converts Windows paths itself. It does not call `wslpath`, and it re
 the real drive mounts from `/proc/self/mountinfo`, so a custom `automount.root` works.
 
 ```sh
-fyi 'C:\Users\me'                 # quoted
-fyi C:/Users/me                   # forward slashes
-fyi C:\Users\me                   # unquoted: bash delivers "C:Usersme"
-fyi C:\Program Files\Git          # unquoted with spaces: split args are rejoined
-fyi '\\wsl.localhost\Ubuntu\home'  # this distro's UNC path
+lsi 'C:\Users\me'                 # quoted
+lsi C:/Users/me                   # forward slashes
+lsi C:\Users\me                   # unquoted: bash delivers "C:Usersme"
+lsi C:\Program Files\Git          # unquoted with spaces: split args are rejoined
+lsi '\\wsl.localhost\Ubuntu\home'  # this distro's UNC path
 ```
 
 The unquoted form arrives with its backslashes removed by the shell. fyi recovers it
@@ -218,14 +248,14 @@ not. The backslashes bash removed are recovered against what exists on disk, the
 same way listings do it.
 
 ```sh
-$ fyi -p D:\My Files\Graphics\Designs        # unquoted, straight from Explorer
+$ lsi -p D:\My Files\Graphics\Designs        # unquoted, straight from Explorer
 /mnt/d/My Files/Graphics/Designs
-$ cd "$(fyi -p D:\My Files\Graphics\Designs)"
-$ fyi -p                                       # here, the other way
+$ cd "$(lsi -p D:\My Files\Graphics\Designs)"
+$ lsi -p                                       # here, the other way
 D:\My Files\Graphics\Designs
-$ fyi -p /home/me
+$ lsi -p /home/me
 \\wsl.localhost\Ubuntu\home\me
-$ fyi -q -p D:\Kalles filer\vad e detta.mp3   # quoted for pasting
+$ lsi -q -p D:\Kalles filer\vad e detta.mp3   # quoted for pasting
 '/mnt/d/Kalles filer/vad e detta.mp3'
 ```
 
@@ -234,7 +264,7 @@ $ fyi -q -p D:\Kalles filer\vad e detta.mp3   # quoted for pasting
   gives its exact spelling on disk.
 - Output is one bare line per path: right for `"$(…)"`, `while read` and
   `xargs -d '\n'`. `-q` shell-quotes it.
-- Other options go before `-p`. `fyi -p -` reads paths from stdin, one per line.
+- Other options go before `-p`. `lsi -p -` reads paths from stdin, one per line.
 - A quoted or pasted path converts even when it does not exist yet, like `wslpath`.
   An unquoted one has lost its backslashes and can only be recovered if it exists.
 
@@ -246,8 +276,8 @@ never sees the text, so names with `(`, `&` or `'` are fine. `--copy` puts the r
 back in the clipboard, ready for Explorer's address bar.
 
 ```sh
-cd "$(fyi --paste)"
-fyi --copy -p .            # K:\VFSH\omfile in the clipboard
+cd "$(lsi --paste)"
+lsi --copy -p .            # K:\VFSH\omfile in the clipboard
 ```
 
 ### wcd and wcp
@@ -258,7 +288,7 @@ functions:
 
 ```sh
 # ~/.bashrc  (or ~/.zshrc with zsh)
-eval "$(fyi --init bash)"
+eval "$(lsi --init bash)"
 ```
 
 ```sh
@@ -275,7 +305,7 @@ The last 50 listings are stored in full under `$XDG_STATE_HOME/fyi/history`
 (default `~/.local/state/fyi/history`). Entries hold the scanned data, not rendered
 output, so a replay is laid out for your current terminal.
 
-- `fyi --hist` lists the stored entries; `fyi -b 3` replays entry 3.
+- `lsi --hist` lists the stored entries; `lsi -b 3` replays entry 3.
 - Each entry is capped at `--hist-bytes`. A larger listing is pruned, deepest
   levels first, and marked as pruned.
 - Listing the same place twice in a row replaces the previous entry.
