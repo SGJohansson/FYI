@@ -79,10 +79,13 @@ pub struct Node {
     pub omitted_files: u64,
     #[serde(rename = "e", default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Entries removed by --ext/--eext (set on the root only).
+    #[serde(rename = "x", default, skip_serializing_if = "is_zero")]
+    pub filtered: u64,
 }
 
 impl Node {
-    fn new(name: String, kind: Kind) -> Self {
+    pub(crate) fn new(name: String, kind: Kind) -> Self {
         Node {
             name,
             kind,
@@ -97,6 +100,7 @@ impl Node {
             omitted_dirs: 0,
             omitted_files: 0,
             error: None,
+            filtered: 0,
         }
     }
 
@@ -316,6 +320,26 @@ fn expand(node: &mut Node, path: &Path, opts: &ScanOpts, depth_left: usize) {
         } else {
             dir_size(path)
         });
+    }
+}
+
+/// Keep at most `limit` children per directory, counting the rest as omitted.
+/// Used after filtering, so the limit applies to what survived.
+pub fn apply_limit(node: &mut Node, limit: usize) {
+    let Some(kids) = node.children.as_mut() else {
+        return;
+    };
+    if kids.len() > limit {
+        for k in kids.drain(limit..) {
+            if k.is_dir {
+                node.omitted_dirs += 1;
+            } else {
+                node.omitted_files += 1;
+            }
+        }
+    }
+    for k in kids.iter_mut() {
+        apply_limit(k, limit);
     }
 }
 

@@ -100,18 +100,35 @@ const M: u64 = K * K;
 const G: u64 = M * K;
 const T: u64 = G * K;
 
+/// One size band: filter key, [lo, hi), colour. Single source for colouring,
+/// the `--ext`/`--eext` size terms and `--legend`.
+pub struct Band {
+    pub key: &'static str,
+    pub lo: u64,
+    pub hi: u64,
+    pub rgb: Rgb,
+    pub color: &'static str,
+    pub range: &'static str,
+}
+
+#[rustfmt::skip]
+pub const BANDS: [Band; 9] = [
+    Band { key: "s1", lo: 0,       hi: K,        rgb: SZ_LIGHT_BLUE, color: "light blue",       range: "< 1K" },
+    Band { key: "s2", lo: K,       hi: 100 * K,  rgb: SZ_TEAL,       color: "blue-green",       range: "1K – 100K" },
+    Band { key: "s3", lo: 100 * K, hi: M,        rgb: SZ_LIGHT_TEAL, color: "light blue-green", range: "100K – 1M" },
+    Band { key: "m1", lo: M,       hi: 10 * M,   rgb: SZ_BLUE,       color: "blue",             range: "1M – 10M" },
+    Band { key: "m2", lo: 10 * M,  hi: 100 * M,  rgb: SZ_PURPLE,     color: "purple",           range: "10M – 100M" },
+    Band { key: "m3", lo: 100 * M, hi: G,        rgb: SZ_PINK,       color: "pink",             range: "100M – 1G" },
+    Band { key: "l1", lo: G,       hi: 10 * G,   rgb: SZ_RED,        color: "red",              range: "1G – 10G" },
+    Band { key: "l2", lo: 10 * G,  hi: T,        rgb: SZ_ORANGE,     color: "orange",           range: "10G – 1T" },
+    Band { key: "l3", lo: T,       hi: u64::MAX, rgb: SZ_ORANGE,     color: "bold orange",      range: "≥ 1T" },
+];
+
 pub fn size_sty(n: u64) -> Sty {
-    match n {
-        _ if n < K => Sty::fg(SZ_LIGHT_BLUE),
-        _ if n < 100 * K => Sty::fg(SZ_TEAL),
-        _ if n < M => Sty::fg(SZ_LIGHT_TEAL),
-        _ if n < 10 * M => Sty::fg(SZ_BLUE),
-        _ if n < 100 * M => Sty::fg(SZ_PURPLE),
-        _ if n < G => Sty::fg(SZ_PINK),
-        _ if n < 10 * G => Sty::fg(SZ_RED),
-        _ if n < T => Sty::fg(SZ_ORANGE),
-        _ => Sty::fg(SZ_ORANGE).bold(),
-    }
+    let last = BANDS.len() - 1;
+    let i = BANDS.iter().position(|b| n < b.hi).unwrap_or(last);
+    let s = Sty::fg(BANDS[i].rgb);
+    if i == last { s.bold() } else { s }
 }
 
 // ---- access classes (colour of the name) ----------------------------------

@@ -10,6 +10,11 @@
 //! fyi: tell me about these files. Entry point, argument handling, WSL
 //! target resolution and history commands.
 
+#[cfg(not(unix))]
+compile_error!("fyi is Linux/WSL only: build it inside WSL (cargo build in a Linux shell).");
+
+mod convert;
+mod filter;
 mod history;
 mod model;
 mod render;
@@ -18,8 +23,10 @@ mod text;
 mod wsl;
 
 use clap::{Parser, ValueEnum};
+use convert::{Shell, To};
+use filter::Filter;
 use history::Mode;
-use model::{Order, ScanOpts, scan_root};
+use model::{Order, ScanOpts, apply_limit, scan_root};
 use render::{Header, RenderOpts, render_flat, render_tree};
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
@@ -49,7 +56,9 @@ by {author}
 {usage-heading} {usage}
 
 {all-args}{after-help}",
-    after_help = "Source and issues: https://github.com/SGJohansson/FYI  (Apache-2.0)"
+    after_help = "Filter keywords, size bands and color legend: fyi --legend\n\
+cd to an Explorer path, unquoted or from the clipboard: eval \"$(fyi --init bash)\", then wcd\n\
+Source and issues: https://github.com/SGJohansson/FYI  (Apache-2.0)"
 )]
 struct Cli {
     /// Paths to list. Windows paths (C:\..., C:/..., \\wsl.localhost\...) work on WSL,
@@ -84,6 +93,19 @@ struct Cli {
     #[arg(short = 'd', long = "dir-sizes")]
     dir_sizes: bool,
 
+    /// List only entries matching any term: keywords (dir, bin, hidden, small, mid,
+    /// large, s1…l3, …) or file extensions (mp3, tar.gz). a+b = both. See --legend.
+    #[arg(long = "ext", value_name = "LIST", value_delimiter = ',')]
+    ext: Vec<String>,
+
+    /// Hide entries matching any term (same terms as --ext; wins over --ext).
+    #[arg(long = "eext", value_name = "LIST", value_delimiter = ',')]
+    eext: Vec<String>,
+
+    /// Show filter keywords, examples and what the size and name colors mean.
+    #[arg(long = "legend")]
+    legend: bool,
+
     /// Replay a previous listing: 1 = most recent.
     #[arg(short = 'b', long = "back", value_name = "N", num_args = 0..=1, default_missing_value = "1")]
     back: Option<usize>,
@@ -99,6 +121,38 @@ struct Cli {
     /// Max bytes stored per history entry (larger listings are pruned).
     #[arg(long = "hist-bytes", value_name = "BYTES", default_value_t = 1 << 20)]
     hist_bytes: usize,
+
+    /// Convert a path between Windows and WSL and print it: D:\My Files ⇄ /mnt/d/My Files.
+    /// Everything after -p is the path, even unquoted with spaces; put other options
+    /// first. No path = current directory; - = read stdin, one path per line.
+    #[arg(
+        short = 'p',
+        long = "wslpath",
+        value_name = "PATH",
+        num_args = 0..,
+        allow_hyphen_values = true
+    )]
+    wslpath: Option<Vec<String>>,
+
+    /// Convert the path(s) in the Windows clipboard (Explorer "Copy as path" or Ctrl+C on files).
+    #[arg(long)]
+    paste: bool,
+
+    /// Also put the converted path in the Windows clipboard (with -p / --paste).
+    #[arg(long)]
+    copy: bool,
+
+    /// Output format for -p / --paste.
+    #[arg(long, value_enum, value_name = "FORMAT", default_value_t = To::Auto)]
+    to: To,
+
+    /// Shell-quote the converted path, ready to paste into a command line.
+    #[arg(short = 'q', long)]
+    quote: bool,
+
+    /// Print the shell functions wcd (cd to any path) and wcp (copy as D:\...).
+    #[arg(long, value_enum, value_name = "SHELL")]
+    init: Option<Shell>,
 
     /// When to use color.
     #[arg(long, value_enum, default_value_t = ColorMode::Auto)]
@@ -212,8 +266,106 @@ fn emit(s: &str) -> bool {
     o.write_all(s.as_bytes()).and_then(|_| o.flush()).is_ok()
 }
 
+/// `-p` / `--paste`: convert and print one line per path.
+fn run_convert(cli: &Cli) -> ExitCode {
+    let listing = !cli.paths.is_empty()
+        || cli.tree
+        || cli.level.is_some()
+        || cli.back.is_some()
+        || cli.hist
+        || cli.legend
+        || !cli.ext.is_empty()
+        || !cli.eext.is_empty();
+    if listing {
+        eprintln!(
+            "fyi: -p / --paste cannot be combined with listing options; \
+             put options before -p, everything after it is the path"
+        );
+        return ExitCode::from(2);
+    }
+    if cli.paste && cli.wslpath.is_some() {
+        eprintln!("fyi: use either -p or --paste");
+        return ExitCode::from(2);
+    }
+    let Some(w) = Wsl::detect() else {
+        eprintln!("fyi: path conversion needs WSL");
+        return ExitCode::from(2);
+    };
+    let args = cli.wslpath.clone().unwrap_or_default();
+    if let Some(a) = args.first().filter(|a| a.len() > 1 && a.starts_with('-')) {
+        eprintln!(
+            "fyi: {a}: everything after -p is the path; options go first: fyi [OPTIONS] -p PATH"
+        );
+        return ExitCode::from(2);
+    }
+    let text = if cli.paste {
+        convert::paste(&w)
+    } else if args.len() == 1 && args[0] == "-" {
+        convert::read_stdin()
+    } else if args.is_empty() {
+        Ok(".".into())
+    } else {
+        // The shell split an unquoted path on its spaces: put it back together.
+        Ok(args.join(" "))
+    };
+    let text = match text {
+        Ok(t) => t,
+        Err(m) => {
+            eprintln!("fyi: {m}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let multi = cli.paste || args.first().is_some_and(|a| a == "-");
+    let inputs: Vec<&str> = if multi {
+        text.lines().filter(|l| !l.trim().is_empty()).collect()
+    } else {
+        vec![text.as_str()]
+    };
+
+    let mut ok = Vec::new();
+    let mut failed = inputs.is_empty();
+    for i in inputs {
+        match convert::convert(&w, i, cli.to) {
+            Ok(s) => ok.push(s),
+            Err(m) => {
+                eprintln!("fyi: {m}");
+                failed = true;
+            }
+        }
+    }
+    let mut out = String::new();
+    for s in &ok {
+        out.push_str(&if cli.quote {
+            convert::shell_quote(s)
+        } else {
+            s.clone()
+        });
+        out.push('\n');
+    }
+    emit(&out);
+    if cli.copy && !ok.is_empty() {
+        if let Err(m) = convert::copy(&w, &ok.join("\r\n")) {
+            eprintln!("fyi: {m}");
+            failed = true;
+        }
+    }
+    if failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    // `--wslpath=D:My Files` would only give clap the first word; split it so
+    // everything after the flag is taken as the path, as with `-p`.
+    let argv = std::env::args_os().flat_map(|a| {
+        match a.to_str().and_then(|s| s.strip_prefix("--wslpath=")) {
+            Some(v) => vec!["--wslpath".into(), v.into()],
+            None => vec![a],
+        }
+    });
+    let cli = Cli::parse_from(argv);
     let tty = std::io::stdout().is_terminal();
     let color = match cli.color {
         ColorMode::Always => true,
@@ -234,6 +386,31 @@ fn main() -> ExitCode {
     };
     let p = ropts.painter;
     let mut out = String::new();
+
+    if let Some(sh) = cli.init {
+        emit(convert::init(sh));
+        return ExitCode::SUCCESS;
+    }
+    let path_mode = cli.wslpath.is_some() || cli.paste;
+    if path_mode {
+        return run_convert(&cli);
+    }
+    if cli.copy || cli.quote || cli.to != To::Auto {
+        eprintln!("fyi: --copy, --quote and --to only apply to -p / --paste");
+        return ExitCode::from(2);
+    }
+
+    if cli.legend {
+        emit(&filter::legend(p));
+        return ExitCode::SUCCESS;
+    }
+    let flt = match Filter::parse(&cli.ext, &cli.eext) {
+        Ok(f) => f,
+        Err(m) => {
+            eprintln!("fyi: {m}");
+            return ExitCode::from(2);
+        }
+    };
 
     if cli.hist {
         let list = history::list();
@@ -274,7 +451,10 @@ fn main() -> ExitCode {
 
     if let Some(n) = cli.back {
         return match history::load(n.max(1)) {
-            Ok(e) => {
+            Ok(mut e) => {
+                if let Some(f) = &flt {
+                    f.apply(&mut e.root, matches!(e.head.mode, Mode::Tree));
+                }
                 let note = format!(
                     "⟲ #{n} · {}{}",
                     history::fmt_time(e.head.ts),
@@ -318,14 +498,16 @@ fn main() -> ExitCode {
 
     let tree = cli.tree || cli.level.is_some();
     let mode = if tree { Mode::Tree } else { Mode::Flat };
+    let lim = (tree && cli.limit > 0).then_some(cli.limit);
     let sopts = ScanOpts {
-        all: cli.all,
+        all: cli.all || flt.as_ref().is_some_and(Filter::wants_hidden),
         depth: if tree {
             cli.level.unwrap_or(usize::MAX).max(1)
         } else {
             1
         },
-        limit: (tree && cli.limit > 0).then_some(cli.limit),
+        // With a filter, the limit applies to what survives it.
+        limit: lim.filter(|_| flt.is_none()),
         dir_sizes: cli.dir_sizes,
         order: if tree {
             Order::FilesFirst
@@ -340,7 +522,13 @@ fn main() -> ExitCode {
         if i > 0 && !ropts.plain {
             out.push('\n');
         }
-        let root = scan_root(&t.path, t.shown.clone(), &sopts);
+        let mut root = scan_root(&t.path, t.shown.clone(), &sopts);
+        if let Some(f) = &flt {
+            f.apply(&mut root, tree);
+            if let Some(l) = lim {
+                apply_limit(&mut root, l);
+            }
+        }
         if root.error.is_some() {
             failed = true;
         }

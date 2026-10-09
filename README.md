@@ -72,6 +72,15 @@ fyi [OPTIONS] [PATHS]...
   -L, --level N        max tree depth (implies --tree)
   -n, --limit N        max entries per directory in tree view [default: 200, 0 = none]
   -d, --dir-sizes      compute directory sizes (walks subtrees; slow on /mnt/*)
+      --ext LIST       list only entries matching LIST (see Filtering)
+      --eext LIST      hide entries matching LIST (wins over --ext)
+      --legend         filter keywords, examples and the color legend
+  -p, --wslpath PATH…  convert a path Windows ⇄ WSL and print it (see Paths)
+      --paste          convert the path(s) in the Windows clipboard
+      --copy           also put the converted path in the Windows clipboard
+      --to FORMAT      auto | linux | win | mixed  (for -p / --paste)
+  -q, --quote          shell-quote the converted path
+      --init SHELL     print the wcd / wcp shell functions (bash, zsh)
   -b, --back [N]       replay a previous listing (1 = most recent)
       --hist           list stored history
       --no-record      do not record this listing
@@ -80,21 +89,63 @@ fyi [OPTIONS] [PATHS]...
   -w, --width COLS     override terminal width
 ```
 
+## Filtering
+
+`--ext` lists only what matches; `--eext` hides what matches and wins over `--ext`.
+Terms are comma-separated and case-insensitive; `a+b` must match both.
+
+```sh
+fyi --ext=dir,mp3,mkv          # directories, mp3 and mkv files
+fyi --eext=sh,py,exe           # everything except those
+fyi --ext=dir,bin,hidden       # directories, executables, dotfiles
+fyi --ext=mkv+large            # only big videos
+fyi --eext=small               # hide everything under 1M
+fyi -r --ext=large             # tree of where the gigabytes are
+```
+
+| Term                         | Matches                                   |
+|------------------------------|-------------------------------------------|
+| `dir`                        | directories (incl. links to directories)  |
+| `file` `link` `broken`       | regular files, symlinks, broken symlinks  |
+| `bin` (`exe`)                | executable files                          |
+| `hidden`                     | dotfiles (`--ext=hidden` implies `-a`)    |
+| `ro` `locked`                | not writable / not readable by you        |
+| `suid` `empty`               | setuid/setgid, zero-byte files            |
+| `small` `mid` `large`        | < 1M, 1M – 1G, ≥ 1G                       |
+| `s1` … `l3`                  | one size band (see [Colors](#colors))     |
+| `mp3`, `tar.gz`              | file extension (any other word is one too)|
+| `.bin`                       | extension, even when it is a keyword      |
+
+No wildcards: `mp3` matches `name.mp3` only, and terms containing `*`, `?` or `/`
+are rejected. Keywords win over extensions: `bin` means executables, `.bin` means
+files ending in `.bin`.
+
+- Flat view shows directories only when `dir` is in `--ext`.
+- Tree view keeps directories that still hold matches; with `dir` it keeps them all.
+- `-n` counts what survives the filter; the header shows how many were filtered.
+- Size terms see directories only with `-d`.
+- Filters also apply to replays: `fyi -b --ext=mp3`.
+
+`fyi --legend` prints all of this, with more examples and the color legend, in your
+terminal.
+
 ## Colors
 
 ### Size (always shown, binary units)
 
-| Size          | Color                 |
-|---------------|-----------------------|
-| < 1K          | light blue            |
-| 1K – 100K     | blue-green            |
-| 100K – 1M     | light blue-green      |
-| 1M – 10M      | blue                  |
-| 10M – 100M    | purple                |
-| 100M – 1G     | pink                  |
-| 1G – 10G      | red                   |
-| 10G – 1T      | orange                |
-| ≥ 1T          | **bold orange**       |
+| Key | Size          | Color                 |
+|-----|---------------|-----------------------|
+| s1  | < 1K          | light blue            |
+| s2  | 1K – 100K     | blue-green            |
+| s3  | 100K – 1M     | light blue-green      |
+| m1  | 1M – 10M      | blue                  |
+| m2  | 10M – 100M    | purple                |
+| m3  | 100M – 1G     | pink                  |
+| l1  | 1G – 10G      | red                   |
+| l2  | 10G – 1T      | orange                |
+| l3  | ≥ 1T          | **bold orange**       |
+
+`small` = s1–s3, `mid` = m1–m3, `large` = l1–l3. All work with `--ext` / `--eext`.
 
 ### Name (effective access for the current user)
 
@@ -158,6 +209,65 @@ literally is always used as-is.
 
 Listings under a drive mount show their Windows spelling next to the path
 (`/mnt/c/Users  ⇄ C:\Users`).
+
+## Paths: Windows ⇄ WSL
+
+`wslpath` gives up as soon as the shell has touched a path. fyi does not:
+everything after `-p` (or `--wslpath`) is the path, quoted or not, with spaces or
+not. The backslashes bash removed are recovered against what exists on disk, the
+same way listings do it.
+
+```sh
+$ fyi -p D:\My Files\Graphics\Designs        # unquoted, straight from Explorer
+/mnt/d/My Files/Graphics/Designs
+$ cd "$(fyi -p D:\My Files\Graphics\Designs)"
+$ fyi -p                                       # here, the other way
+D:\My Files\Graphics\Designs
+$ fyi -p /home/me
+\\wsl.localhost\Ubuntu\home\me
+$ fyi -q -p D:\Kalles filer\vad e detta.mp3   # quoted for pasting
+'/mnt/d/Kalles filer/vad e detta.mp3'
+```
+
+- The direction is automatic: a Windows path becomes a Linux path and the other way
+  round. `--to linux|win|mixed` forces one; `--to win` on a mangled Windows path
+  gives its exact spelling on disk.
+- Output is one bare line per path: right for `"$(…)"`, `while read` and
+  `xargs -d '\n'`. `-q` shell-quotes it.
+- Other options go before `-p`. `fyi -p -` reads paths from stdin, one per line.
+- A quoted or pasted path converts even when it does not exist yet, like `wslpath`.
+  An unquoted one has lost its backslashes and can only be recovered if it exists.
+
+### The clipboard
+
+`--paste` reads the Windows clipboard: a path from Explorer's *Copy as path*
+(Shift + right-click, quotes are stripped) or files copied with Ctrl+C. The shell
+never sees the text, so names with `(`, `&` or `'` are fine. `--copy` puts the result
+back in the clipboard, ready for Explorer's address bar.
+
+```sh
+cd "$(fyi --paste)"
+fyi --copy -p .            # K:\VFSH\omfile in the clipboard
+```
+
+### wcd and wcp
+
+`cd $(…)` can never work unquoted with spaces: the shell splits the result again.
+A program also cannot change your shell's directory. So fyi ships two small shell
+functions:
+
+```sh
+# ~/.bashrc  (or ~/.zshrc with zsh)
+eval "$(fyi --init bash)"
+```
+
+```sh
+wcd D:\My Files\Graphics\Designs   # cd, unquoted, no $( )
+wcd                                  # cd to the path in the clipboard
+wcd D:\Music\song.mp3               # a file: cd to its folder
+wcp                                  # this folder → clipboard as D:\…
+wcp ~/notes.txt                      # \\wsl.localhost\… → paste in Windows
+```
 
 ## History
 

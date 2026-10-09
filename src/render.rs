@@ -130,14 +130,15 @@ fn summary(n: &Node, p: Painter) -> String {
         };
     }
     let (d, f) = n.counts();
-    p.paint(
-        &format!(
-            "{} · {}",
-            plural(d, "dir", "dirs"),
-            plural(f, "file", "files")
-        ),
-        Sty::dim(),
-    )
+    let mut s = format!(
+        "{} · {}",
+        plural(d, "dir", "dirs"),
+        plural(f, "file", "files")
+    );
+    if n.filtered > 0 {
+        s.push_str(&format!(" · {} filtered", n.filtered));
+    }
+    p.paint(&s, Sty::dim())
 }
 
 fn total_size(n: &Node) -> Option<u64> {
